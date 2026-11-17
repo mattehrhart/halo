@@ -80,3 +80,4 @@ sends and remembers the undimmed ones per effect.
 | `--route <device>/<section>[/<selection>]` | Open a page; device is a kind (`keyboard`, `mouse`) or a serial |
 | `--size WxH` | Window size |
 | `--grab <file.png>` `--grab-delay <ms>` | Save a capture and exit (used by the tests) |
+| `--separate` | Run beside a Halo that is already open, without a tray icon (for testing) |

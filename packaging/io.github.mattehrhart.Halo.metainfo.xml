@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.mattehrhart.Halo</id>
   <name>Halo</name>
-  <summary>Lighting, keys and cooling for gaming gear</summary>
+  <summary>Lighting and keys for gaming gear</summary>
   <developer id="io.github.mattehrhart">
     <name>Matt Ehrhart</name>
   </developer>
@@ -27,8 +27,8 @@
   </description>
   <launchable type="desktop-id">io.github.mattehrhart.Halo.desktop</launchable>
   <branding>
-    <color type="primary" scheme_preference="light">#c9d6f0</color>
-    <color type="primary" scheme_preference="dark">#1b2230</color>
+    <color type="primary" scheme_preference="light">#9cc4ff</color>
+    <color type="primary" scheme_preference="dark">#26427a</color>
   </branding>
   <screenshots>
     <screenshot type="default">

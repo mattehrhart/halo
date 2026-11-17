@@ -669,12 +669,15 @@ int main(int argc, char *argv[])
                                 QStringLiteral("ms"), QStringLiteral("2500"));
     QCommandLineOption sizeOpt(QStringLiteral("size"), QStringLiteral("Window size at start, e.g. 1280x800."),
                                QStringLiteral("WxH"));
-    parser.addOptions({hubOpt, minimizedOpt, routeOpt, grabOpt, delayOpt, sizeOpt});
+    QCommandLineOption separateOpt(QStringLiteral("separate"),
+                                   QStringLiteral("Run beside a Halo that is already open, without a tray icon (for testing)."));
+    parser.addOptions({hubOpt, minimizedOpt, routeOpt, grabOpt, delayOpt, sizeOpt, separateOpt});
     parser.process(app);
 
     // One Halo at a time: a second launch just brings the first one's
     // window forward. (Test captures with --grab run on their own.)
-    if (!parser.isSet(grabOpt)) {
+    const bool alone = parser.isSet(grabOpt) || parser.isSet(separateOpt);
+    if (!alone) {
         QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.registerService(APP_ID)) {
             bus.call(QDBusMessage::createMethodCall(APP_ID, QStringLiteral("/Halo"), QString(), QStringLiteral("showWindow")));
@@ -705,7 +708,7 @@ int main(int argc, char *argv[])
     if (window && size.size() == 2) {
         window->resize(size.at(0).toInt(), size.at(1).toInt());
     }
-    if (window && !parser.isSet(grabOpt)) {
+    if (window && !alone) {
         shell.attach(window);
         QDBusConnection::sessionBus().registerObject(QStringLiteral("/Halo"), &shell, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableInvokables);
     }
