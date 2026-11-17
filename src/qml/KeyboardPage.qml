@@ -9,6 +9,8 @@ Kirigami.Page {
 
     property string serial: ""
     property string startSection: ""
+    // A key id to select at start (used with --route).
+    property string startSelect: ""
     // The device as OpenLinkHub describes it; null until loaded.
     property var device: null
     property var keymap: KeyLayout.build({})
@@ -16,24 +18,35 @@ Kirigami.Page {
     property var selected: ({})
     property bool busy: false
     property string loadError: ""
+    // Set while a control is mid-drag, so the periodic check waits.
+    property bool holdRefresh: false
+    // The last change the device refused, shown in a banner until dismissed.
+    property string problem: ""
 
     readonly property var selectedIds: Object.keys(selected).map(Number).sort((a, b) => a - b)
-    readonly property var sections: [
-        { key: "lighting", text: "Lighting Effects", icon: "color-management" },
-        { key: "actuation", text: "Key Actuation", icon: "transform-move-vertical" },
-        { key: "performance", text: "Performance", icon: "speedometer" },
-        { key: "device", text: "Device Settings", icon: "configure" }
-    ]
+    // Only the sections this model has anything for: adjustable switches
+    // are on a few magnetic models only.
+    readonly property var sections: {
+        const list = [
+            { key: "lighting", text: "Lighting Effects", icon: "color-management-symbolic" },
+            { key: "assignments", text: "Key Assignments", icon: "input-keyboard" }
+        ]
+        if (keymap.keys.some(k => KeyLayout.adjustable(k.raw)))
+            list.push({ key: "actuation", text: "Key Actuation", icon: "transform-move-vertical" })
+        list.push({ key: "performance", text: "Performance", icon: "speedometer" })
+        list.push({ key: "device", text: "Device Settings", icon: "configure" })
+        return list
+    }
+    onSectionsChanged: {
+        if (device !== null && !sections.some(s => s.key === section))
+            section = "lighting"
+    }
 
-    padding: 0
+    padding: Kirigami.Units.largeSpacing
 
-    actions: [
-        Kirigami.Action {
-            text: "Refresh"
-            icon.name: "view-refresh"
-            onTriggered: devicePage.load()
-        }
-    ]
+    // Keys can be selected only where a selection does something.
+    readonly property bool selectable: section === "assignments" || section === "actuation"
+        || (section === "lighting" && device !== null && device.DeviceProfile.RGBProfile === "keyboard")
 
     function load() {
         Hub.call("GET", "/api/devices/" + serial, null, function (ok, data, message) {
@@ -44,20 +57,24 @@ Kirigami.Page {
             devicePage.loadError = ""
             const dev = data.device
             const board = dev.DeviceProfile.Keyboards[dev.DeviceProfile.Profile]
-            devicePage.keymap = KeyLayout.build(board ? board.row : {})
+            // Models with a hand-made diagram keep the measurements it was drawn to.
+            const drawn = deviceImages.info(dev.product || dev.Product || "").width !== undefined
+            devicePage.keymap = drawn ? KeyLayout.build(board ? board.row : {}) : KeyLayout.buildGrid(board ? board.row : {})
             devicePage.device = dev
         })
     }
 
     // Sends one change, then re-reads the device so the screen shows what
     // the keyboard actually accepted.
-    function send(method, path, body, done) {
+    function send(method, path, body, done, okText) {
         body.deviceId = serial
         busy = true
         Hub.call(method, path, body, function (ok, data, message) {
             devicePage.busy = false
             if (!ok)
-                applicationWindow().showPassiveNotification(message || "The keyboard did not accept that change.")
+                devicePage.problem = message || "The keyboard did not accept that change."
+            else if (okText)
+                status.show(okText)
             devicePage.load()
             if (done)
                 done(ok, data)
@@ -65,7 +82,7 @@ Kirigami.Page {
     }
 
     // Sends the same kind of change for several keys, one after another.
-    function sendEach(path, bodies, done) {
+    function sendEach(path, bodies, done, okText) {
         let index = 0
         let failures = 0
         busy = true
@@ -73,7 +90,9 @@ Kirigami.Page {
             if (index >= bodies.length) {
                 devicePage.busy = false
                 if (failures > 0)
-                    applicationWindow().showPassiveNotification(failures + " of " + bodies.length + " keys did not accept the change.")
+                    devicePage.problem = "Part of that change was not accepted by the keyboard."
+                else
+                    status.show(okText || (bodies.length === 1 ? "Key updated" : bodies.length + " keys updated"))
                 devicePage.load()
                 if (done)
                     done(failures === 0)
@@ -91,8 +110,10 @@ Kirigami.Page {
     }
 
     function tapKey(id, extend) {
-        const next = extend ? Object.assign({}, selected) : {}
-        if (extend && selected[id])
+        // Assignments are made one key at a time.
+        const multi = extend && section !== "assignments"
+        const next = multi ? Object.assign({}, selected) : {}
+        if (multi && selected[id])
             delete next[id]
         else
             next[id] = true
@@ -106,46 +127,108 @@ Kirigami.Page {
         selected = next
     }
 
+    // OpenLinkHub cannot announce changes, so the page asks several times a
+    // second and compares the answer with the last one. Nothing is redrawn
+    // unless something really changed (temperatures in the answer are
+    // ignored, since they change constantly).
+    property string lastSeen: ""
+
+    function watch() {
+        if (busy || holdRefresh)
+            return
+        Hub.fetchText("/api/devices/" + serial, function (text) {
+            const seen = text.replace(/"(CpuTemp|GpuTemp)":[-0-9.]+/g, "")
+            if (text === "" || seen === devicePage.lastSeen || devicePage.busy || devicePage.holdRefresh)
+                return
+            devicePage.lastSeen = seen
+            devicePage.load()
+        })
+    }
+
+    Timer {
+        interval: 500
+        repeat: true
+        running: devicePage.visible && devicePage.device !== null && applicationWindow().visible
+        onTriggered: devicePage.watch()
+    }
+
+    Connections {
+        target: applicationWindow()
+        function onLightsChanged() { devicePage.load() }
+    }
+
     Component.onCompleted: {
-        for (const s of sections) {
-            if (s.key === startSection)
-                section = startSection
+        if (startSection !== "")
+            section = startSection
+        if (/^[0-9,]+$/.test(startSelect)) {
+            const first = {}
+            for (const id of startSelect.split(","))
+                first[Number(id)] = true
+            selected = first
         }
         load()
     }
 
-    RowLayout {
-        anchors.fill: parent
-        spacing: 0
+    ColumnLayout {
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(parent.width, Kirigami.Units.gridUnit * 130)
+        spacing: Kirigami.Units.largeSpacing
 
-        SectionMenu {
-            Layout.fillHeight: true
-            Layout.preferredWidth: Kirigami.Units.gridUnit * 12
-            sections: devicePage.sections
-            current: devicePage.section
-            onPicked: key => devicePage.section = key
+        DeviceStrip {
+            Layout.fillWidth: true
+            current: devicePage.serial
+            onRefresh: devicePage.load()
         }
 
-        ColumnLayout {
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: devicePage.problem !== ""
+            type: Kirigami.MessageType.Error
+            text: devicePage.problem
+            showCloseButton: true
+            onVisibleChanged: {
+                if (!visible)
+                    devicePage.problem = ""
+            }
+        }
+
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+            Layout.minimumHeight: Kirigami.Units.gridUnit * 14.5
+            spacing: Kirigami.Units.largeSpacing
+
+            SectionMenu {
+                Layout.fillHeight: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 13
+                title: devicePage.title
+                subtitle: devicePage.device ? "Firmware " + devicePage.device.firmware : ""
+                sections: devicePage.sections
+                current: devicePage.section
+                onPicked: key => {
+                    devicePage.section = key
+                    if (key === "assignments" && devicePage.selectedIds.length > 1)
+                        devicePage.selected = ({})
+                }
+            }
 
             // The stage: the keyboard itself.
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.minimumHeight: Kirigami.Units.gridUnit * 12
 
                 KeyboardView {
                     anchors.fill: parent
-                    anchors.margins: Kirigami.Units.largeSpacing
                     anchors.bottomMargin: Kirigami.Units.gridUnit * 2
                     visible: devicePage.device !== null
                     keymap: devicePage.keymap
                     device: devicePage.device
-                    selected: devicePage.selected
-                    badge: devicePage.section === "actuation" ? "actuation" : ""
+                    diagram: devicePage.device ? deviceImages.info(devicePage.device.product) : ({})
+                    selected: devicePage.selectable ? devicePage.selected : ({})
+                    interactive: devicePage.selectable
+                    badge: devicePage.section === "actuation" ? "actuation" : devicePage.section === "assignments" ? "assign" : ""
                     onKeyTapped: (id, extend) => devicePage.tapKey(id, extend)
                 }
 
@@ -161,70 +244,79 @@ Kirigami.Page {
                         onTriggered: devicePage.load()
                     }
                 }
-                QQC2.BusyIndicator {
-                    anchors.centerIn: parent
-                    running: devicePage.device === null && devicePage.loadError === ""
-                    visible: running
+                PageSkeleton {
+                    anchors.fill: parent
+                    visible: devicePage.device === null && devicePage.loadError === ""
+                    part: "view"
                 }
 
                 RowLayout {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
-                    anchors.margins: Kirigami.Units.smallSpacing
+                    height: Kirigami.Units.gridUnit * 2
                     visible: devicePage.device !== null
                     spacing: Kirigami.Units.smallSpacing
 
                     QQC2.Label {
-                        Layout.leftMargin: Kirigami.Units.largeSpacing
-                        text: devicePage.selectedIds.length === 0 ? "Click a key to select it. Hold Ctrl to select several."
-                            : devicePage.selectedIds.length === 1 ? "1 key selected" : devicePage.selectedIds.length + " keys selected"
-                        color: Kirigami.Theme.disabledTextColor
+                        visible: devicePage.selectable
+                        opacity: 0.7
+                        text: {
+                            const count = devicePage.selectedIds.length
+                            if (devicePage.section === "assignments")
+                                return count === 0 || !devicePage.keymap.byId[devicePage.selectedIds[0]] ? "Click a key to reassign it."
+                                    : KeyLayout.spokenName(devicePage.keymap.byId[devicePage.selectedIds[0]].name) + " selected"
+                            return count === 0 ? "Click keys to select. Ctrl-click to add."
+                                : count === 1 ? "1 key selected" : count + " keys selected"
+                        }
                     }
                     Item { Layout.fillWidth: true }
-                    QQC2.BusyIndicator {
-                        Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                        Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                        running: devicePage.busy
-                        visible: running
+                    StatusLine {
+                        id: status
+                        busy: devicePage.busy
                     }
                     QQC2.ToolButton {
-                        text: "Select all"
+                        visible: devicePage.selectable && devicePage.section !== "assignments"
+                        text: "Select All"
                         icon.name: "edit-select-all"
                         onClicked: devicePage.selectAll()
                     }
                     QQC2.ToolButton {
-                        text: "Clear selection"
+                        visible: devicePage.selectable && devicePage.selectedIds.length > 0
+                        text: "Clear"
                         icon.name: "edit-select-none"
-                        enabled: devicePage.selectedIds.length > 0
                         onClicked: devicePage.selected = ({})
                     }
                 }
             }
+        }
 
-            Kirigami.Separator { Layout.fillWidth: true }
-
-            // The controls for the chosen section.
-            QQC2.Pane {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 16, devicePage.height * 0.42)
-                padding: Kirigami.Units.largeSpacing
-                Kirigami.Theme.colorSet: Kirigami.Theme.View
-                Kirigami.Theme.inherit: false
-
-                contentItem: Loader {
-                    active: devicePage.device !== null
-                    sourceComponent: devicePage.section === "lighting" ? lighting
-                        : devicePage.section === "actuation" ? actuation
-                        : devicePage.section === "performance" ? performance : deviceSettings
-                }
-            }
+        // The cards for the chosen section.
+        PageSkeleton {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 16, devicePage.height * 0.42)
+            visible: devicePage.device === null && devicePage.loadError === ""
+            part: "panels"
+        }
+        Loader {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 16, devicePage.height * 0.42)
+            visible: devicePage.device !== null
+            active: devicePage.device !== null
+            sourceComponent: devicePage.section === "lighting" ? lighting
+                : devicePage.section === "assignments" ? assignments
+                : devicePage.section === "actuation" ? actuation
+                : devicePage.section === "performance" ? performance : deviceSettings
         }
     }
 
     Component {
         id: lighting
         KbLighting { page: devicePage }
+    }
+    Component {
+        id: assignments
+        KbAssignments { page: devicePage }
     }
     Component {
         id: actuation

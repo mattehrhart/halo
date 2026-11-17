@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mattehrhart.Halo</id>
+  <name>Halo</name>
+  <summary>Lighting, keys and cooling for gaming gear</summary>
+  <developer id="io.github.mattehrhart">
+    <name>Matt Ehrhart</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <url type="homepage">https://github.com/mattehrhart/halo</url>
+  <url type="bugtracker">https://github.com/mattehrhart/halo/issues</url>
+  <url type="vcs-browser">https://github.com/mattehrhart/halo</url>
+  <description>
+    <p>Halo sets lighting, key and button assignments, actuation and DPI on
+    supported gaming keyboards and mice, and fan curves, lighting and screens
+    on hubs and coolers. It draws each device and lights it the way the device
+    itself is lit.</p>
+    <p>Halo uses the OpenLinkHub service to talk to devices and includes a
+    copy of it. OpenLinkHub is free software under the GPL-3.0 license.</p>
+    <p>The first time it runs, Halo shows one command to copy into a terminal.
+    It grants access to your devices and is needed once.</p>
+    <p>Halo is an independent project. It is not made by, affiliated with or
+    endorsed by any device maker. It is used daily with a K70 MAX keyboard and
+    a Scimitar Elite Wireless mouse; other devices are supported through
+    OpenLinkHub but have not been tested on real hardware.</p>
+  </description>
+  <launchable type="desktop-id">io.github.mattehrhart.Halo.desktop</launchable>
+  <branding>
+    <color type="primary" scheme_preference="light">#c9d6f0</color>
+    <color type="primary" scheme_preference="dark">#1b2230</color>
+  </branding>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Keyboard lighting with a live preview</caption>
+      <image>https://raw.githubusercontent.com/mattehrhart/halo/v0.3.0/docs/screenshots/keyboard.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Mouse button assignments</caption>
+      <image>https://raw.githubusercontent.com/mattehrhart/halo/v0.3.0/docs/screenshots/mouse.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>DPI stages</caption>
+      <image>https://raw.githubusercontent.com/mattehrhart/halo/v0.3.0/docs/screenshots/dpi.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Fans, pumps and sensors</caption>
+      <image>https://raw.githubusercontent.com/mattehrhart/halo/v0.3.0/docs/screenshots/cooling.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Fan curve editor</caption>
+      <image>https://raw.githubusercontent.com/mattehrhart/halo/v0.3.0/docs/screenshots/fan-curves.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.3.0" date="2026-11-17">
+      <description>
+        <p>First public release.</p>
+        <ul>
+          <li>Keyboards, mice and headsets: lighting, assignments, actuation, DPI</li>
+          <li>Hubs, coolers, memory and power supplies: live readings, fan curves, lighting, screens</li>
+          <li>Tray icon, start at login, low-battery alerts</li>
+          <li>OpenLinkHub included</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

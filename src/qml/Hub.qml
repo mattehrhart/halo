@@ -58,14 +58,28 @@ QtObject {
         }
     }
 
+    // What a device is, from the icon OpenLinkHub gives it.
+    // Fetches a page as plain text, for checking cheaply whether anything
+    // changed before doing the work of reading it. done(text or "").
+    function fetchText(path, done) {
+        const xhr = new XMLHttpRequest()
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === XMLHttpRequest.DONE)
+                done(xhr.status >= 200 && xhr.status < 300 ? xhr.responseText : "")
+        }
+        xhr.open("GET", base + path)
+        xhr.send()
+    }
+
     function kindOf(image) {
         const name = String(image || "")
-        if (name.indexOf("keyboard") >= 0)
-            return "keyboard"
-        if (name.indexOf("mouse") >= 0)
-            return "mouse"
-        if (name.indexOf("headset") >= 0)
-            return "headset"
+        const kinds = [["keyboard", "keyboard"], ["mousepad", "mousepad"], ["mouse", "mouse"], ["headphone-stand", "stand"],
+                       ["headphone", "headset"], ["controller", "controller"], ["radiator", "cooler"], ["towers", "cooler"],
+                       ["ram", "memory"], ["psu", "power"], ["lcd", "display"], ["motherboard", "motherboard"]]
+        for (const pair of kinds) {
+            if (name.indexOf(pair[0]) >= 0)
+                return pair[1]
+        }
         return "other"
     }
 
@@ -90,8 +104,9 @@ QtObject {
                 })
             }
             // Keyboards first, then mice, then the rest.
-            const order = { keyboard: 0, mouse: 1, headset: 2, other: 3 }
-            list.sort((a, b) => order[a.kind] - order[b.kind])
+            const order = { keyboard: 0, mouse: 1, headset: 2 }
+            const rank = d => order[d.kind] === undefined ? 3 : order[d.kind]
+            list.sort((a, b) => rank(a) - rank(b))
             hub.devices = list
             hub.reachable = true
             hub.loaded = true

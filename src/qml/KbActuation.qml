@@ -12,10 +12,10 @@ RowLayout {
     readonly property var targets: page.selectedIds.filter(id => page.keymap.byId[id] && KeyLayout.adjustable(page.keymap.byId[id].raw))
     readonly property var first: targets.length > 0 ? page.keymap.byId[targets[0]].raw : null
 
-    spacing: Kirigami.Units.gridUnit
+    spacing: Kirigami.Units.largeSpacing
 
     function mm(tenths) {
-        return (tenths / 10).toFixed(1) + " mm"
+        return (Math.round(tenths) / 10).toFixed(1) + " mm"
     }
 
     function settings(keyId, allKeys) {
@@ -32,12 +32,13 @@ RowLayout {
     }
 
     function applySelected() {
-        page.sendEach("/api/keyboard/updateActuation", targets.map(id => settings(id, false)))
+        page.sendEach("/api/keyboard/updateActuation", targets.map(id => settings(id, false)), null,
+                      targets.length === 1 ? "Key updated" : targets.length + " keys updated")
     }
 
     function applyAll() {
         const any = targets.length > 0 ? targets[0] : page.keymap.keys.find(k => KeyLayout.adjustable(k.raw)).id
-        page.send("POST", "/api/keyboard/updateActuation", settings(any, true))
+        page.send("POST", "/api/keyboard/updateActuation", settings(any, true), null, "All keys updated")
     }
 
     // Show the first selected key's current values whenever the selection
@@ -53,30 +54,33 @@ RowLayout {
         secondReset.value = first.secondaryActuationResetPoint
     }
 
+    component Travel: QQC2.Slider {
+        Layout.fillWidth: true
+        from: 1
+        to: 40
+    }
+    component Reading: QQC2.Label {
+        Layout.minimumWidth: readingSize.width
+        horizontalAlignment: Text.AlignRight
+    }
+    TextMetrics {
+        id: readingSize
+        text: "4.0 mm"
+    }
+
     Panel {
-        title: "Keys"
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 16
+        title: "Selected Keys"
+        description: "Travel before a key registers."
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
         Layout.fillWidth: false
 
         QQC2.Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "The number on each key is how far down it must be pressed before it registers. Select keys on the keyboard, set the distance, then apply."
-        }
-        QQC2.Label {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
             font.weight: Font.DemiBold
-            text: root.targets.length === 0 ? "No keys selected"
+            text: root.targets.length === 0 ? "None"
                 : root.targets.slice(0, 14).map(id => KeyLayout.spokenName(root.page.keymap.byId[id].name)).join(", ")
                   + (root.targets.length > 14 ? " and " + (root.targets.length - 14) + " more" : "")
-        }
-        QQC2.Label {
-            Layout.fillWidth: true
-            visible: root.targets.length > 1
-            wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
-            text: "The sliders start from the first selected key's settings."
         }
     }
 
@@ -84,120 +88,99 @@ RowLayout {
         title: "Actuation Point"
         Layout.fillWidth: true
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 34
+            columns: 3
+            columnSpacing: Kirigami.Units.largeSpacing
+            rowSpacing: Kirigami.Units.largeSpacing
 
             QQC2.Label { text: "Press distance" }
-            QQC2.Slider {
+            Travel {
                 id: point
-
-                Layout.fillWidth: true
-                from: 1
-                to: 40
-                stepSize: 1
                 value: 20
-                snapMode: QQC2.Slider.SnapAlways
                 Accessible.name: "Press distance"
             }
-            QQC2.Label {
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
-                horizontalAlignment: Text.AlignRight
-                text: root.mm(point.value)
+            Reading { text: root.mm(point.value) }
+
+            QQC2.Switch {
+                id: resetOn
+                Layout.columnSpan: 3
+                text: "Separate release point"
             }
-        }
-
-        QQC2.Switch {
-            id: resetOn
-            text: "Set the release distance separately"
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            enabled: resetOn.checked
-
-            QQC2.Label { text: "Release distance" }
-            QQC2.Slider {
+            QQC2.Label {
+                visible: resetOn.checked
+                text: "Release distance"
+            }
+            Travel {
                 id: reset
-
-                Layout.fillWidth: true
-                from: 1
-                to: 40
-                stepSize: 1
+                visible: resetOn.checked
                 value: 19
-                snapMode: QQC2.Slider.SnapAlways
                 Accessible.name: "Release distance"
             }
-            QQC2.Label {
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
-                horizontalAlignment: Text.AlignRight
+            Reading {
+                visible: resetOn.checked
                 text: root.mm(reset.value)
             }
-        }
 
-        QQC2.Switch {
-            id: secondOn
-            text: "Second action further down the press"
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            enabled: secondOn.checked
-
-            QQC2.Label { text: "Second press distance" }
-            QQC2.Slider {
+            QQC2.Switch {
+                id: secondOn
+                Layout.columnSpan: 3
+                text: "Secondary actuation point"
+            }
+            QQC2.Label {
+                visible: secondOn.checked
+                text: "Second press distance"
+            }
+            Travel {
                 id: second
-
-                Layout.fillWidth: true
-                from: 1
-                to: 40
-                stepSize: 1
+                visible: secondOn.checked
                 value: 35
-                snapMode: QQC2.Slider.SnapAlways
                 Accessible.name: "Second press distance"
             }
-            QQC2.Label {
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
-                horizontalAlignment: Text.AlignRight
+            Reading {
+                visible: secondOn.checked
                 text: root.mm(second.value)
             }
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            enabled: secondOn.checked
-
-            QQC2.Label { text: "Second release distance" }
-            QQC2.Slider {
+            QQC2.Label {
+                visible: secondOn.checked
+                text: "Second release distance"
+            }
+            Travel {
                 id: secondReset
-
-                Layout.fillWidth: true
-                from: 1
-                to: 40
-                stepSize: 1
+                visible: secondOn.checked
                 value: 34
-                snapMode: QQC2.Slider.SnapAlways
                 Accessible.name: "Second release distance"
             }
-            QQC2.Label {
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
-                horizontalAlignment: Text.AlignRight
+            Reading {
+                visible: secondOn.checked
                 text: root.mm(secondReset.value)
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
 
             QQC2.Button {
-                text: root.targets.length > 1 ? "Apply to " + root.targets.length + " selected keys" : "Apply to selected key"
-                icon.name: "dialog-ok-apply"
+                text: root.targets.length > 1 ? "Apply to " + root.targets.length + " Selected Keys" : "Apply to Selected Key"
                 enabled: root.targets.length > 0 && !root.page.busy
                 onClicked: root.applySelected()
             }
             QQC2.Button {
-                text: "Apply to every key"
+                text: "Apply to All Keys…"
                 enabled: !root.page.busy
-                onClicked: root.applyAll()
+                onClicked: confirmAll.open()
             }
         }
+    }
+
+    Kirigami.PromptDialog {
+        id: confirmAll
+
+        title: "Apply to All Keys?"
+        subtitle: "All keys will use " + root.mm(point.value) + "."
+        standardButtons: Kirigami.Dialog.Ok | Kirigami.Dialog.Cancel
+        onAccepted: root.applyAll()
     }
 }

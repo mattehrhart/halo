@@ -1,0 +1,177 @@
+diff -ru OpenLinkHub-0.9.4/src/devices/devices.go patched/src/devices/devices.go
+--- a/src/devices/devices.go	2026-11-01 02:00:43.000000000 -0500
++++ b/src/devices/devices.go	2026-11-17 13:55:10.941248616 -0500
+@@ -439,6 +439,75 @@
+ 	return method.Call(reflectArgs)
+ }
+ 
++// SetMouseDpiStage selects the active DPI stage of a mouse and applies it.
++// It returns 1 on success, 2 when the stage does not exist or is the sniper
++// stage, and 0 on any other failure. Like every other change made through
++// the API it runs under the devices mutex.
++func SetMouseDpiStage(deviceId string, stage int) uint8 {
++	mutex.Lock()
++	defer mutex.Unlock()
++
++	entry, ok := devices[deviceId]
++	if !ok || entry.Instance == nil {
++		return 0
++	}
++
++	// Every mouse keeps the active stage in DeviceProfile.Profile and its
++	// stages in DeviceProfile.Profiles, in a type of its own package.
++	instance := reflect.ValueOf(entry.Instance)
++	device := reflect.Indirect(instance)
++	if device.Kind() != reflect.Struct {
++		return 0
++	}
++	profile := device.FieldByName("DeviceProfile")
++	if !profile.IsValid() || (profile.Kind() == reflect.Ptr && profile.IsNil()) {
++		return 0
++	}
++	profile = reflect.Indirect(profile)
++	if profile.Kind() != reflect.Struct {
++		return 0
++	}
++	active := profile.FieldByName("Profile")
++	profiles := profile.FieldByName("Profiles")
++	if !active.IsValid() || !active.CanSet() || active.Kind() != reflect.Int ||
++		!profiles.IsValid() || profiles.Kind() != reflect.Map || profiles.Type().Key().Kind() != reflect.Int {
++		return 0
++	}
++	save := instance.MethodByName("SaveMouseDPI")
++	if !save.IsValid() {
++		return 0
++	}
++
++	wanted := profiles.MapIndex(reflect.ValueOf(stage))
++	if !wanted.IsValid() || wanted.Kind() != reflect.Struct {
++		return 2
++	}
++	if sniper := wanted.FieldByName("Sniper"); sniper.IsValid() && sniper.Kind() == reflect.Bool && sniper.Bool() {
++		return 2
++	}
++
++	// Saving the unchanged stage values stores the profile and applies the
++	// active stage to the mouse.
++	stages := make(map[int]uint16, profiles.Len())
++	iter := profiles.MapRange()
++	for iter.Next() {
++		value := iter.Value().FieldByName("Value")
++		if !value.IsValid() || value.Kind() != reflect.Uint16 {
++			return 0
++		}
++		stages[int(iter.Key().Int())] = uint16(value.Uint())
++	}
++
++	previous := active.Int()
++	active.SetInt(int64(stage))
++	results := save.Call([]reflect.Value{reflect.ValueOf(stages)})
++	if len(results) > 0 && results[0].Uint() == 1 {
++		return 1
++	}
++	active.SetInt(previous)
++	return 0
++}
++
+ // GetProducts will return all available products
+ func GetProducts() map[string]Device {
+ 	return deviceList
+diff -ru OpenLinkHub-0.9.4/src/server/requests/requests.go patched/src/server/requests/requests.go
+--- a/src/server/requests/requests.go	2026-11-01 02:00:43.000000000 -0500
++++ b/src/server/requests/requests.go	2026-11-17 13:55:10.940878226 -0500
+@@ -133,6 +133,7 @@
+ 	FanMode                       int                   `json:"fanMode"`
+ 	New                           bool                  `json:"new"`
+ 	Stages                        map[int]uint16        `json:"stages"`
++	DpiStage                      int                   `json:"dpiStage"`
+ 	ZoneTilts                     map[int]uint8         `json:"zoneTilts"`
+ 	ColorDpi                      rgb.Color             `json:"colorDpi"`
+ 	ColorSniper                   rgb.Color             `json:"colorSniper"`
+@@ -3800,6 +3801,32 @@
+ 	}
+ 	return &Payload{Message: language.GetValue("txtUnableToSaveDPI"), Code: http.StatusOK, Status: 0}
+ }
++
++// ProcessMouseDpiStageChange will process a POST request from a client to select the active DPI stage
++func ProcessMouseDpiStageChange(r *http.Request) *Payload {
++	req := &Payload{}
++	err := json.NewDecoder(r.Body).Decode(&req)
++	if err != nil {
++		logger.Log(map[string]interface{}{"error": err}).Error("Unable to decode JSON")
++		return &Payload{
++			Message: language.GetValue("txtUnableToValidateRequest"),
++			Code:    http.StatusOK,
++			Status:  0,
++		}
++	}
++
++	if devices.GetDevice(req.DeviceId) == nil {
++		return &Payload{Message: language.GetValue("txtNonExistingDevice"), Code: http.StatusOK, Status: 0}
++	}
++
++	switch devices.SetMouseDpiStage(req.DeviceId, req.DpiStage) {
++	case 1:
++		return &Payload{Message: language.GetValue("txtMouseDPIUpdated"), Code: http.StatusOK, Status: 1}
++	case 2:
++		return &Payload{Message: language.GetValue("txtInvalidStages"), Code: http.StatusOK, Status: 0}
++	}
++	return &Payload{Message: language.GetValue("txtUnableToSaveDPI"), Code: http.StatusOK, Status: 0}
++}
+ 
+ // ProcessMouseGestureUpdate will process a POST request from a client for mouse gesture update
+ func ProcessMouseGestureUpdate(r *http.Request) *Payload {
+diff -ru OpenLinkHub-0.9.4/src/server/server.go patched/src/server/server.go
+--- a/src/server/server.go	2026-11-01 02:00:43.000000000 -0500
++++ b/src/server/server.go	2026-11-17 13:36:01.555573004 -0500
+@@ -220,6 +220,16 @@
+ 	resp.Send(w)
+ }
+ 
++// getLcdImages will return the names of the uploaded LCD images
++func getLcdImages(w http.ResponseWriter, _ *http.Request) {
++	resp := &Response{
++		Code:   http.StatusOK,
++		Status: 1,
++		Data:   lcd.GetLcdImages(),
++	}
++	resp.Send(w)
++}
++
+ // getDeviceMetrics will return a list device metrics in prometheus format
+ func getDeviceMetrics(w http.ResponseWriter, r *http.Request) {
+ 	devices.UpdateDeviceMetrics()
+@@ -1940,6 +1950,17 @@
+ 	resp.Send(w)
+ }
+ 
++// changeMouseDpiStage handles selecting the active mouse DPI stage
++func changeMouseDpiStage(w http.ResponseWriter, r *http.Request) {
++	request := requests.ProcessMouseDpiStageChange(r)
++	resp := &Response{
++		Code:    request.Code,
++		Status:  request.Status,
++		Message: request.Message,
++	}
++	resp.Send(w)
++}
++
+ // saveMouseGestures handles mouse gestures save
+ func saveMouseGestures(w http.ResponseWriter, r *http.Request) {
+ 	request := requests.ProcessMouseGestureUpdate(r)
+@@ -2796,6 +2817,7 @@
+ 	handleFunc(r, "/api/gpuLoad", http.MethodGet, getGpuLoad)
+ 	handleFunc(r, "/api/storageTemp", http.MethodGet, getStorageTemperature)
+ 	handleFunc(r, "/api/batteryStats", http.MethodGet, getBatteryStats)
++	handleFunc(r, "/api/lcd/images", http.MethodGet, getLcdImages)
+ 	handleFunc(r, "/api/devices/", http.MethodGet, getDevices)
+ 	handleFunc(r, "/api/device/profiles/", http.MethodGet, getDeviceProfiles)
+ 	handleFunc(r, "/api/color/", http.MethodGet, getColor)
+@@ -2893,6 +2915,7 @@
+ 	handleFunc(r, "/api/scheduler/rgb", http.MethodPost, changeRgbScheduler)
+ 	handleFunc(r, "/api/psu/speed", http.MethodPost, changePsuFanMode)
+ 	handleFunc(r, "/api/mouse/dpi", http.MethodPost, saveMouseDpi)
++	handleFunc(r, "/api/mouse/dpiStage", http.MethodPost, changeMouseDpiStage)
+ 	handleFunc(r, "/api/mouse/gestures", http.MethodPost, saveMouseGestures)
+ 	handleFunc(r, "/api/mouse/zoneColors", http.MethodPost, saveMouseZoneColors)
+ 	handleFunc(r, "/api/mouse/dpiColors", http.MethodPost, saveMouseDpiColors)

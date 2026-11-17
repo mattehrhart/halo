@@ -1,0 +1,81 @@
+{
+    "id": "io.github.mattehrhart.Halo",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "6.11",
+    "sdk": "org.kde.Sdk",
+    "command": "halo",
+    "finish-args": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--device=all",
+        "--talk-name=org.kde.StatusNotifierWatcher"
+    ],
+    "modules": [
+        {
+            "name": "openlinkhub",
+            "buildsystem": "simple",
+            "build-options": {
+                "append-path": "/usr/lib/sdk/golang/bin",
+                "env": {
+                    "CGO_CFLAGS_ALLOW": "-fno-strict-overflow",
+                    "GOFLAGS": "-buildvcs=false -mod=vendor",
+                    "GOTOOLCHAIN": "local",
+                    "GOPROXY": "off"
+                }
+            },
+            "build-commands": [
+                "go build -o OpenLinkHub .",
+                "mkdir -p /app/lib/openlinkhub /app/share/licenses/openlinkhub",
+                "cp -r OpenLinkHub web static database 99-openlinkhub.rules /app/lib/openlinkhub/",
+                "install -m644 LICENSE /app/share/licenses/openlinkhub/LICENSE",
+                "install -m644 openlinkhub-halo.patch /app/share/licenses/openlinkhub/halo-changes.patch"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/jurkovic-nikola/OpenLinkHub/archive/refs/tags/0.9.4.tar.gz",
+                    "sha256": "c77b3f914afa0cb9a7bbd5079bfe7be379dddafd71897979db72fdbf2a7c19ff"
+                },
+                {
+                    "type": "patch",
+                    "path": "packaging/openlinkhub-halo.patch"
+                },
+                {
+                    "type": "file",
+                    "path": "packaging/openlinkhub-halo.patch"
+                },
+                {
+                    "type": "file",
+                    "path": "packaging/openlinkhub-modules.txt",
+                    "dest": "vendor",
+                    "dest-filename": "modules.txt"
+                },
+                "packaging/openlinkhub-go-sources.json"
+            ]
+        },
+        {
+            "name": "halo",
+            "buildsystem": "cmake-ninja",
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": ".",
+                    "skip": [
+                        "build",
+                        ".flatpak-builder",
+                        "flatpak-build",
+                        "repo"
+                    ]
+                }
+            ]
+        }
+    ],
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.golang"
+    ]
+}

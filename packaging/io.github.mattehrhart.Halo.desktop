@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Halo
+GenericName=Keyboard and Mouse Lighting
+Comment=Lighting, key assignments, actuation and DPI for gaming keyboards and mice
+Exec=halo
+Icon=io.github.mattehrhart.Halo
+Terminal=false
+Categories=Qt;KDE;Settings;HardwareSettings;
+Keywords=keyboard;mouse;rgb;lighting;macro;dpi;actuation;
+StartupWMClass=halo

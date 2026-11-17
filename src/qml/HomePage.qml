@@ -1,120 +1,154 @@
+// Setup: shown until a device can be controlled. It walks through the three
+// things that must be true, and fixes or explains each one.
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-Kirigami.ScrollablePage {
+Kirigami.Page {
     id: page
 
-    title: "Devices"
+    title: "Set Up Halo"
 
-    actions: [
-        Kirigami.Action {
-            text: "Refresh"
-            icon.name: "view-refresh"
-            onTriggered: Hub.refresh()
-        }
-    ]
+    // {found, usable}: supported devices plugged in, and how many this user may open.
+    property var access: hubService.access()
+    readonly property bool serviceUp: Hub.reachable
+    readonly property bool allowed: access.found > 0 && access.usable >= access.found
+    readonly property string command: hubService.rulesCommand()
 
-    function iconFor(kind) {
-        if (kind === "keyboard")
-            return "input-keyboard"
-        if (kind === "mouse")
-            return "input-mouse"
-        if (kind === "headset")
-            return "audio-headset"
-        return "preferences-devices-tree"
-    }
-
-    Kirigami.PlaceholderMessage {
-        anchors.centerIn: parent
-        width: parent.width - Kirigami.Units.gridUnit * 4
-        visible: Hub.loaded && !Hub.reachable
-        icon.name: "network-disconnect"
-        text: "OpenLinkHub is not answering"
-        explanation: "Linkdeck controls your devices through the OpenLinkHub service at " + Hub.base
-            + ". Check that it is running:\nsystemctl --user status OpenLinkHub"
-        helpfulAction: Kirigami.Action {
-            text: "Try again"
-            icon.name: "view-refresh"
-            onTriggered: Hub.refresh()
+    Timer {
+        interval: 2000
+        running: page.visible
+        repeat: true
+        onTriggered: {
+            page.access = hubService.access()
+            Hub.refresh()
         }
     }
 
-    Kirigami.PlaceholderMessage {
-        anchors.centerIn: parent
-        width: parent.width - Kirigami.Units.gridUnit * 4
-        visible: Hub.loaded && Hub.reachable && Hub.devices.length === 0
-        icon.name: "input-keyboard"
-        text: "No devices found"
-        explanation: "OpenLinkHub is running but has not picked up a supported device."
-    }
+    component Step: RowLayout {
+        id: step
 
-    GridLayout {
-        visible: Hub.reachable && Hub.devices.length > 0
-        columns: Math.max(1, Math.floor(page.width / (Kirigami.Units.gridUnit * 18)))
-        columnSpacing: Kirigami.Units.largeSpacing
-        rowSpacing: Kirigami.Units.largeSpacing
+        property bool done: false
+        property bool waiting: false
+        property string title: ""
+        property string detail: ""
+        default property alias extra: more.data
 
-        Repeater {
-            model: Hub.devices
+        Layout.fillWidth: true
+        spacing: Kirigami.Units.largeSpacing
 
-            Kirigami.AbstractCard {
-                id: card
+        Item {
+            Layout.alignment: Qt.AlignTop
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                required property var modelData
-                readonly property var level: Hub.battery[modelData.serial]
+            Kirigami.Icon {
+                anchors.fill: parent
+                visible: !step.waiting
+                source: step.done ? "emblem-ok-symbolic" : "emblem-important-symbolic"
+                color: step.done ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.neutralTextColor
+                isMask: true
+            }
+            QQC2.BusyIndicator {
+                anchors.fill: parent
+                running: step.waiting
+                visible: step.waiting
+            }
+        }
+        ColumnLayout {
+            id: more
 
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            Kirigami.Heading {
+                level: 4
+                font.weight: Font.DemiBold
+                text: step.title
+            }
+            QQC2.Label {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Kirigami.Units.gridUnit * 11
-                showClickFeedback: true
-                onClicked: applicationWindow().openDevice(modelData, "")
+                visible: text !== ""
+                text: step.detail
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+            }
+        }
+    }
 
-                Accessible.name: modelData.product
-                Accessible.role: Accessible.Button
+    ColumnLayout {
+        anchors.centerIn: parent
+        width: Math.min(parent.width - Kirigami.Units.gridUnit * 4, Kirigami.Units.gridUnit * 34)
+        spacing: Kirigami.Units.gridUnit
 
-                contentItem: ColumnLayout {
-                    spacing: Kirigami.Units.smallSpacing
+        Kirigami.Icon {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredWidth: Kirigami.Units.iconSizes.huge
+            Layout.preferredHeight: Kirigami.Units.iconSizes.huge
+            source: "io.github.mattehrhart.Halo"
+        }
+        Kirigami.Heading {
+            Layout.alignment: Qt.AlignHCenter
+            level: 1
+            text: "Set Up Halo"
+        }
 
-                    Kirigami.Icon {
-                        Layout.alignment: Qt.AlignHCenter
-                        Layout.preferredWidth: Kirigami.Units.iconSizes.enormous
-                        Layout.preferredHeight: Kirigami.Units.iconSizes.enormous
-                        source: page.iconFor(card.modelData.kind)
-                    }
-                    Kirigami.Heading {
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
-                        level: 3
-                        text: card.modelData.product
-                        elide: Text.ElideRight
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignHCenter
-                        spacing: Kirigami.Units.largeSpacing
+        Step {
+            title: "Device service"
+            done: page.serviceUp
+            waiting: !page.serviceUp && hubService.running
+            detail: page.serviceUp ? "OpenLinkHub is running."
+                : hubService.running ? "Starting OpenLinkHub…"
+                : hubService.problem !== "" ? "OpenLinkHub did not start: " + hubService.problem
+                : hubService.bundled ? "OpenLinkHub is not running."
+                : "OpenLinkHub is not installed. Get it from github.com/jurkovic-nikola/OpenLinkHub."
 
-                        QQC2.Label {
-                            visible: card.modelData.firmware !== "" && card.modelData.firmware !== "n/a"
-                            text: "Firmware " + card.modelData.firmware
-                            color: Kirigami.Theme.disabledTextColor
-                        }
-                        RowLayout {
-                            visible: card.level !== undefined
-                            spacing: Kirigami.Units.smallSpacing
+            QQC2.Button {
+                visible: !page.serviceUp && !hubService.running && hubService.bundled
+                text: "Start"
+                onClicked: hubService.start()
+            }
+        }
 
-                            Kirigami.Icon {
-                                Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                                Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                                source: card.level <= 15 ? "battery-low" : card.level <= 50 ? "battery-good" : "battery-full"
-                            }
-                            QQC2.Label {
-                                text: (card.level === undefined ? "" : card.level) + " %"
-                                color: card.level <= 15 ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
-                            }
-                        }
+        Step {
+            title: "Device access"
+            done: page.allowed
+            detail: page.access.found === 0 ? "No supported device is plugged in."
+                : page.allowed ? "Halo can reach your devices."
+                : page.command === "" ? "Your devices need a one-time permission. Install OpenLinkHub's udev rule (99-openlinkhub.rules) to grant it."
+                : "Your devices need a one-time permission. Run this in a terminal:"
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: page.access.found > 0 && !page.allowed && page.command !== ""
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.TextField {
+                    Layout.fillWidth: true
+                    readOnly: true
+                    text: page.command
+                    font.family: "monospace"
+                    Accessible.name: "Permission command"
+                    onActiveFocusChanged: {
+                        if (activeFocus)
+                            selectAll()
                     }
                 }
+                QQC2.Button {
+                    text: "Copy"
+                    icon.name: "edit-copy"
+                    onClicked: hubService.copy(page.command)
+                }
             }
+        }
+
+        Step {
+            title: "Devices"
+            done: Hub.devices.length > 0
+            waiting: page.serviceUp && page.allowed && Hub.devices.length === 0
+            detail: Hub.devices.length > 0 ? Hub.devices.map(d => d.product).join(", ")
+                : page.serviceUp && page.allowed ? "Looking for devices…" : "Waiting for the steps above."
         }
     }
 }

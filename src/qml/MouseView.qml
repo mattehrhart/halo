@@ -1,7 +1,7 @@
-// A drawn top-down mouse with a twelve-button thumb pad. Buttons are
-// matched to OpenLinkHub's button list by name, so tapping one selects it.
+// A mouse drawn as a simple diagram: its outline from the side and from
+// above, each button as an outlined shape, and its lights in their colors.
 import QtQuick
-import QtQuick.Effects
+import QtQuick.Shapes
 import org.kde.kirigami as Kirigami
 import "layout.js" as KeyLayout
 
@@ -11,18 +11,29 @@ Item {
     property var device: null
     // The selected button's index in device.KeyAssignment, or "".
     property string selected: ""
+    // Whether buttons respond to the pointer.
+    property bool interactive: true
+    // This model's diagram (see tools/make-device-diagrams.py).
+    property var diagram: ({})
+    // The traced outline to show when this model has no diagram.
+    property var traced: ({})
     signal buttonTapped(string index)
 
-    readonly property real unit: Math.min(width / 520, height / 420)
-    readonly property string mode: device ? device.DeviceProfile.RGBProfile : "off"
-    property real phase: 0
+    readonly property bool exact: diagram !== null && diagram !== undefined && diagram.width !== undefined
+    readonly property real zoom: exact ? Math.min(width / diagram.width, height / diagram.height) : 1
+    readonly property color ink: Kirigami.Theme.textColor
+    readonly property string mode: device && device.DeviceProfile && device.DeviceProfile.RGBProfile ? device.DeviceProfile.RGBProfile : "off"
+    // Seconds the current effect has been playing in the preview.
+    property real clock: 0
 
-    NumberAnimation on phase {
-        from: 0
-        to: 1
-        duration: 7000
-        loops: Animation.Infinite
-        running: view.visible && ["mouse", "static", "off"].indexOf(view.mode) < 0
+    FrameAnimation {
+        running: view.visible && ["static", "off", KeyLayout.zoneMode(view.device)].indexOf(view.mode) < 0
+        onTriggered: view.clock += frameTime
+    }
+    onModeChanged: clock = 0
+
+    function shade(amount) {
+        return Qt.rgba(ink.r, ink.g, ink.b, amount)
     }
 
     function indexOf(name) {
@@ -35,228 +46,190 @@ Item {
         return ""
     }
 
-    // Colour of lighting zone 0 (thumb pad) or 1 (palm).
+    // The color of a lighting zone right now.
     function zone(number) {
         if (!device || mode === "off" || device.DeviceProfile.RgbOff)
             return Qt.rgba(0, 0, 0, 1)
-        if (mode === "mouse") {
+        if (mode === KeyLayout.zoneMode(device)) {
             const z = device.DeviceProfile.ZoneColors[String(number)]
-            return z ? KeyLayout.rgb(z.Color) : Qt.rgba(0, 0, 0, 1)
+            return z ? KeyLayout.onScreen(KeyLayout.rgb(z.Color), KeyLayout.dimming(device, false)) : Qt.rgba(0, 0, 0, 1)
         }
-        return KeyLayout.keyColor({ raw: {}, cx: number * 0.5, cy: 0.5 }, device, phase)
+        // Each zone is one light; the device numbers them from the logo.
+        return KeyLayout.keyColor({ raw: {}, light: view.exact ? (number === 0 ? 1 : 0) : number }, device, clock)
     }
 
-    component Hit: MouseArea {
-        property string name: ""
-        readonly property string index: view.indexOf(name)
+    function points(list, close) {
+        const path = list.map(p => Qt.point(p[0], p[1]))
+        if (close)
+            path.push(path[0])
+        return path
+    }
 
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        enabled: index !== ""
-        onClicked: view.buttonTapped(index)
-        Accessible.role: Accessible.Button
-        Accessible.name: name
+    // No diagram for this model: its traced outline, and under it a lamp
+    // for each lighting zone in that zone's color.
+    readonly property var zoneIds: device && device.DeviceProfile && device.DeviceProfile.ZoneColors
+        ? Object.keys(device.DeviceProfile.ZoneColors).map(Number).sort((a, b) => a - b) : []
 
-        Rectangle {
-            anchors.fill: parent
-            radius: 8 * view.unit
-            visible: view.selected === parent.index && parent.index !== ""
-            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.25)
-            border.width: Math.max(2, 3 * view.unit)
-            border.color: Kirigami.Theme.highlightColor
+    OutlineView {
+        visible: !view.exact
+        anchors.fill: parent
+        anchors.bottomMargin: lamps.visible ? lamps.height + Kirigami.Units.largeSpacing : 0
+        outline: view.traced
+    }
+    Kirigami.PlaceholderMessage {
+        anchors.centerIn: parent
+        visible: !view.exact && view.device !== null && !(view.traced && view.traced.views)
+        icon.name: "preferences-devices-tree"
+        text: view.device ? view.device.product : ""
+    }
+    Row {
+        id: lamps
+
+        visible: !view.exact && view.zoneIds.length > 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        spacing: Kirigami.Units.gridUnit
+
+        Repeater {
+            model: view.zoneIds
+
+            Row {
+                required property int modelData
+                spacing: Kirigami.Units.smallSpacing
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Kirigami.Units.gridUnit
+                    height: width
+                    radius: width / 2
+                    color: KeyLayout.lightInk(view.zone(modelData), view.ink, 0.15, 1)
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: view.device.DeviceProfile.ZoneColors[String(modelData)].Name || ""
+                    color: view.shade(0.7)
+                }
+            }
         }
     }
 
     Item {
         id: frame
 
+        // Keep the active highlight color even while the window is in the background.
+        Kirigami.Theme.colorGroup: Kirigami.Theme.Active
+        Kirigami.Theme.inherit: false
+        visible: view.exact
         anchors.centerIn: parent
-        width: 520 * view.unit
-        height: 420 * view.unit
+        width: view.exact ? view.diagram.width * view.zoom : 0
+        height: view.exact ? view.diagram.height * view.zoom : 0
 
-        // Glow from both lighting zones.
-        Item {
-            anchors.fill: parent
-            layer.enabled: true
-            layer.effect: MultiEffect {
-                blurEnabled: true
-                blur: 1.0
-                blurMax: 48
-            }
-
-            Rectangle {
-                x: 28 * view.unit
-                y: 118 * view.unit
-                width: 190 * view.unit
-                height: 200 * view.unit
-                radius: 30 * view.unit
-                color: view.zone(0)
-                opacity: 0.7
-            }
-            Rectangle {
-                x: 285 * view.unit
-                y: 285 * view.unit
-                width: 90 * view.unit
-                height: 70 * view.unit
-                radius: 35 * view.unit
-                color: view.zone(1)
-                opacity: 0.8
-            }
+        // Everything is drawn in the diagram's own units and scaled as one.
+        component Canvas: Shape {
+            width: view.diagram.width
+            height: view.diagram.height
+            scale: view.zoom
+            transformOrigin: Item.TopLeft
+            preferredRendererType: Shape.CurveRenderer
         }
 
-        // Thumb pad, sticking out of the left side.
-        Rectangle {
-            id: pad
+        Repeater {
+            model: view.exact ? view.diagram.outlines : []
 
-            x: 40 * view.unit
-            y: 130 * view.unit
-            width: 190 * view.unit
-            height: 176 * view.unit
-            radius: 22 * view.unit
-            border.width: 1
-            border.color: "#0d0e10"
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: "#3a3d42" }
-                GradientStop { position: 1.0; color: "#232528" }
+            Canvas {
+                required property var modelData
+
+                ShapePath {
+                    strokeWidth: 3
+                    strokeColor: view.shade(0.4)
+                    fillColor: view.shade(0.04)
+                    joinStyle: ShapePath.RoundJoin
+                    PathPolyline { path: view.points(modelData, true) }
+                }
             }
+        }
+        Repeater {
+            model: view.exact && view.diagram.details ? view.diagram.details : []
 
-            Grid {
-                anchors.centerIn: parent
-                anchors.horizontalCenterOffset: -14 * view.unit
-                columns: 3
-                spacing: 6 * view.unit
+            Canvas {
+                required property var modelData
 
-                Repeater {
-                    model: 12
-
-                    Rectangle {
-                        id: thumb
-
-                        required property int index
-                        readonly property color tint: view.zone(0)
-                        readonly property bool dark: tint.r + tint.g + tint.b < 0.06
-
-                        width: 40 * view.unit
-                        height: 34 * view.unit
-                        radius: 7 * view.unit
-                        color: thumbHit.containsMouse ? "#2c2e33" : "#17181b"
-                        border.width: 1
-                        border.color: "#08090a"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: thumb.index + 1
-                            color: thumb.dark ? "#5c6066" : thumb.tint
-                            font.pixelSize: Math.max(6, 16 * view.unit)
-                            font.weight: Font.DemiBold
-                        }
-                        Hit {
-                            id: thumbHit
-                            anchors.fill: parent
-                            name: "Side Button " + (thumb.index + 1)
-                        }
-                    }
+                ShapePath {
+                    strokeWidth: 2
+                    strokeColor: view.shade(0.22)
+                    fillColor: "transparent"
+                    joinStyle: ShapePath.RoundJoin
+                    PathPolyline { path: view.points(modelData, false) }
                 }
             }
         }
 
-        // Body.
-        Rectangle {
-            id: body
-
-            x: 200 * view.unit
-            y: 20 * view.unit
-            width: 250 * view.unit
-            height: 380 * view.unit
-            radius: 118 * view.unit
-            border.width: 1
-            border.color: "#0d0e10"
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: "#45484e" }
-                GradientStop { position: 0.45; color: "#2b2d31" }
-                GradientStop { position: 1.0; color: "#1c1d20" }
-            }
-        }
-        // Seam between the two main buttons.
-        Rectangle {
-            x: body.x + body.width / 2 - 1
-            y: body.y + 8 * view.unit
-            width: 2
-            height: 150 * view.unit
-            color: "#0d0e10"
-        }
-        Hit {
-            x: body.x + 8 * view.unit
-            y: body.y + 12 * view.unit
-            width: body.width / 2 - 26 * view.unit
-            height: 150 * view.unit
-            name: "Left Button"
-        }
-        Hit {
-            x: body.x + body.width / 2 + 18 * view.unit
-            y: body.y + 12 * view.unit
-            width: body.width / 2 - 26 * view.unit
-            height: 150 * view.unit
-            name: "Right Button"
-        }
-        // Wheel.
-        Rectangle {
-            id: wheel
-
-            x: body.x + body.width / 2 - 13 * view.unit
-            y: body.y + 48 * view.unit
-            width: 26 * view.unit
-            height: 62 * view.unit
-            radius: 13 * view.unit
-            border.width: 1
-            border.color: "#08090a"
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "#1a1b1e" }
-                GradientStop { position: 0.5; color: "#55585d" }
-                GradientStop { position: 1.0; color: "#1a1b1e" }
-            }
-            Hit {
-                anchors.fill: parent
-                name: "Middle Button"
-            }
-        }
-        // The two small buttons behind the wheel.
+        // Lights that are not buttons.
         Repeater {
-            model: ["DPI Button", "Profile Switch"]
+            model: view.exact && view.diagram.lights ? view.diagram.lights : []
 
             Rectangle {
-                id: small
+                required property var modelData
+                readonly property color tint: view.zone(modelData.zone)
+
+                x: modelData.box[0] * view.zoom
+                y: modelData.box[1] * view.zoom
+                width: modelData.box[2] * view.zoom
+                height: modelData.box[3] * view.zoom
+                radius: height / 2
+                color: KeyLayout.lightInk(tint, view.ink, 0.12, 1)
+            }
+        }
+
+        Repeater {
+            model: view.exact ? Object.keys(view.diagram.shapes) : []
+
+            Canvas {
+                id: button
 
                 required property string modelData
-                required property int index
+                readonly property string index: view.indexOf(modelData)
+                readonly property bool picked: index !== "" && view.selected === index
+                readonly property var corners: view.diagram.shapes[modelData]
+                readonly property var mark: view.diagram.labels ? view.diagram.labels[modelData] : undefined
+                readonly property color tint: mark ? view.zone(mark.zone) : Qt.rgba(0, 0, 0, 1)
+                readonly property bool dark: tint.r + tint.g + tint.b < 0.02
 
-                x: body.x + body.width / 2 - 15 * view.unit
-                y: body.y + (124 + index * 34) * view.unit
-                width: 30 * view.unit
-                height: 26 * view.unit
-                radius: 8 * view.unit
-                color: smallHit.containsMouse ? "#2c2e33" : "#17181b"
-                border.width: 1
-                border.color: "#08090a"
+                containsMode: Shape.FillContains
+                enabled: index !== "" && view.interactive
 
-                Hit {
-                    id: smallHit
-                    anchors.fill: parent
-                    name: small.modelData
+                Accessible.role: Accessible.Button
+                Accessible.name: modelData
+
+                ShapePath {
+                    strokeWidth: button.picked ? 6 : 2.5
+                    strokeColor: button.picked ? Kirigami.Theme.highlightColor
+                        : button.mark ? KeyLayout.lightInk(button.tint, view.ink, 0.3, 0.75) : view.shade(0.3)
+                    fillColor: button.picked ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22)
+                        : hover.hovered ? view.shade(0.12)
+                        : button.mark ? KeyLayout.lightInk(button.tint, view.ink, 0.05, 0.18) : view.shade(0.05)
+                    joinStyle: ShapePath.RoundJoin
+                    PathPolyline { path: view.points(button.corners, true) }
+                }
+                // The button's printed number, lit, and tilted like the button.
+                Text {
+                    visible: button.mark !== undefined
+                    x: button.corners.reduce((sum, p) => sum + p[0], 0) / button.corners.length - width / 2
+                    y: button.corners.reduce((sum, p) => sum + p[1], 0) / button.corners.length - height / 2
+                    rotation: Math.atan2(button.corners[1][1] - button.corners[0][1], button.corners[1][0] - button.corners[0][0]) * 180 / Math.PI
+                    text: button.mark ? button.mark.text : ""
+                    color: KeyLayout.lightInk(button.tint, view.ink, 0.4, 1)
+                    font.pixelSize: 50
+                    font.weight: Font.DemiBold
+                }
+                HoverHandler {
+                    id: hover
+                    cursorShape: Qt.PointingHandCursor
+                }
+                TapHandler {
+                    onTapped: view.buttonTapped(button.index)
                 }
             }
-        }
-        // Palm light.
-        Rectangle {
-            readonly property color tint: view.zone(1)
-
-            x: body.x + body.width / 2 - 26 * view.unit
-            y: body.y + 286 * view.unit
-            width: 52 * view.unit
-            height: 30 * view.unit
-            radius: 15 * view.unit
-            color: tint.r + tint.g + tint.b < 0.06 ? "#1a1b1e" : tint
         }
     }
 }

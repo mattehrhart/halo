@@ -17,82 +17,85 @@ RowLayout {
         return ""
     }
 
-    spacing: Kirigami.Units.gridUnit
+    spacing: Kirigami.Units.largeSpacing
+
+    function shown(name) {
+        return name.charAt(0).toUpperCase() + name.slice(1)
+    }
 
     Panel {
-        title: "Keyboard"
+        title: "Key Layout"
         Layout.preferredWidth: Kirigami.Units.gridUnit * 18
         Layout.fillWidth: false
 
-        Kirigami.FormLayout {
-            Layout.fillWidth: true
-
-            QQC2.Label {
-                Kirigami.FormData.label: "Model:"
-                text: root.device.product
-            }
-            QQC2.Label {
-                Kirigami.FormData.label: "Firmware:"
-                text: root.device.firmware
-            }
-            QQC2.ComboBox {
-                Kirigami.FormData.label: "Key layout:"
-                model: root.device.Layouts || []
-                currentIndex: (root.device.Layouts || []).indexOf(root.device.DeviceProfile.Layout)
-                enabled: !root.page.busy
-                onActivated: index => root.page.send("POST", "/api/keyboard/layout", { keyboardLayout: model[index] })
-            }
+        QQC2.ComboBox {
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+            model: root.device.Layouts || []
+            currentIndex: (root.device.Layouts || []).indexOf(root.device.DeviceProfile.Layout)
+            enabled: !root.page.busy
+            onActivated: index => root.page.send("POST", "/api/keyboard/layout", { keyboardLayout: model[index] }, null, "Layout " + model[index])
+            Accessible.name: "Key layout"
         }
     }
 
     Panel {
         title: "Profiles"
+        description: "Lighting, actuation and performance."
         Layout.fillWidth: true
 
-        QQC2.Label {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
-            text: "A profile holds this keyboard's lighting, actuation and performance settings."
-        }
-        Repeater {
-            model: root.profileNames
-
-            QQC2.RadioButton {
-                required property string modelData
-
-                Layout.fillWidth: true
-                text: modelData
-                checked: modelData === root.activeProfile
-                enabled: !root.page.busy
-                onClicked: {
-                    if (modelData !== root.activeProfile)
-                        root.page.send("POST", "/api/userProfile/change", { userProfileName: modelData })
-                }
-            }
+        QQC2.ComboBox {
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+            model: root.profileNames.map(name => root.shown(name))
+            currentIndex: root.profileNames.indexOf(root.activeProfile)
+            enabled: !root.page.busy && root.profileNames.length > 1
+            onActivated: index => root.page.send("POST", "/api/userProfile/change", { userProfileName: root.profileNames[index] }, null,
+                                                 "Profile " + root.shown(root.profileNames[index]))
+            Accessible.name: "Profile"
         }
         RowLayout {
-            Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
             QQC2.TextField {
                 id: newName
 
-                Layout.fillWidth: true
-                Layout.maximumWidth: Kirigami.Units.gridUnit * 14
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 12
                 placeholderText: "New profile name"
                 validator: RegularExpressionValidator { regularExpression: /[A-Za-z0-9]{1,24}/ }
                 Accessible.name: "New profile name"
+                onAccepted: add.clicked()
             }
             QQC2.Button {
-                text: "Save current settings as new profile"
-                icon.name: "document-save-as"
+                id: add
+
+                text: "Save as Profile"
                 enabled: newName.text.length > 0 && !root.page.busy
                 onClicked: root.page.send("PUT", "/api/userProfile", { userProfileName: newName.text }, ok => {
                     if (ok)
                         newName.clear()
-                })
+                }, "Profile saved")
             }
         }
+    }
+
+    Panel {
+        title: "Reset"
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 16
+        Layout.fillWidth: false
+
+        QQC2.Button {
+            text: "Reset to Defaults…"
+            icon.name: "edit-reset"
+            enabled: !root.page.busy
+            onClicked: confirmReset.open()
+        }
+    }
+
+    Kirigami.PromptDialog {
+        id: confirmReset
+
+        title: "Reset " + root.device.product + "?"
+        subtitle: "Lighting, assignments and other settings for this device return to their defaults."
+        standardButtons: Kirigami.Dialog.Ok | Kirigami.Dialog.Cancel
+        onAccepted: root.page.send("POST", "/api/resetSettings", {}, null, "Reset to defaults")
     }
 }

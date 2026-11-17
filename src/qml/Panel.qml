@@ -1,43 +1,62 @@
-// One titled column in the lower half of a device page.
+// One titled card in the row along the bottom of a device page.
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-ColumnLayout {
+QQC2.Pane {
     id: panel
 
     property string title: ""
+    // One line of secondary text under the title; empty for none.
+    property string description: ""
     default property alias content: body.data
 
-    spacing: 0
     Layout.fillHeight: true
-    Layout.alignment: Qt.AlignTop
+    padding: Kirigami.Units.largeSpacing
+    Kirigami.Theme.colorSet: Kirigami.Theme.View
+    Kirigami.Theme.inherit: false
 
-    Kirigami.Heading {
-        Layout.fillWidth: true
-        Layout.bottomMargin: Kirigami.Units.smallSpacing
-        level: 4
-        text: panel.title
-        elide: Text.ElideRight
+    background: Rectangle {
+        radius: Kirigami.Units.cornerRadius
+        color: Kirigami.Theme.backgroundColor
+        border.width: 1
+        border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.12)
     }
-    Kirigami.Separator {
-        Layout.fillWidth: true
-        Layout.bottomMargin: Kirigami.Units.largeSpacing
-    }
-    QQC2.ScrollView {
-        id: scroll
 
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        contentWidth: availableWidth
-        clip: true
+    contentItem: ColumnLayout {
+        spacing: 0
 
-        ColumnLayout {
-            id: body
+        Kirigami.Heading {
+            Layout.fillWidth: true
+            level: 4
+            font.weight: Font.DemiBold
+            text: panel.title
+            elide: Text.ElideRight
+        }
+        QQC2.Label {
+            Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.smallSpacing
+            visible: panel.description !== ""
+            text: panel.description
+            wrapMode: Text.WordWrap
+            opacity: 0.7
+        }
+        QQC2.ScrollView {
+            id: scroll
 
-            width: scroll.availableWidth
-            spacing: Kirigami.Units.largeSpacing
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.topMargin: Kirigami.Units.largeSpacing
+            contentWidth: availableWidth
+            clip: true
+
+            ColumnLayout {
+                id: body
+
+                width: scroll.availableWidth
+                spacing: Kirigami.Units.largeSpacing
+            }
         }
     }
 }

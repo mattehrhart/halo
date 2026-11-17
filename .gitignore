@@ -2,3 +2,6 @@ build/
 .flatpak-builder/
 flatpak-build/
 repo/
+__pycache__/
+*.flatpak
+tests/fakehub/slow
