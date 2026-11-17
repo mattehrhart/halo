@@ -98,6 +98,8 @@ devices in `tests/fakehub`. See [docs/TESTING.md](docs/TESTING.md).
 - [Testing](docs/TESTING.md)
 - [How devices are drawn](docs/DEVICES.md)
 - [Publishing on Flathub](docs/FLATHUB.md)
+- [Making a release](docs/RELEASING.md)
+- [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## License
