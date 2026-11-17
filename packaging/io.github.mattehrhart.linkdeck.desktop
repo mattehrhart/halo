@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Linkdeck
+GenericName=Keyboard and Mouse Settings
+Comment=Lighting, keys, actuation and DPI for Corsair devices, through OpenLinkHub
+Exec=linkdeck
+Icon=io.github.mattehrhart.linkdeck
+Terminal=false
+Categories=Qt;KDE;Settings;HardwareSettings;
+Keywords=keyboard;mouse;rgb;lighting;macro;dpi;actuation;
+StartupWMClass=linkdeck

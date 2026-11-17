@@ -1,0 +1,24 @@
+{
+    "id": "io.github.mattehrhart.linkdeck",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "6.11",
+    "sdk": "org.kde.Sdk",
+    "command": "linkdeck",
+    "finish-args": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--device=dri"
+    ],
+    "modules": [
+        {
+            "name": "linkdeck",
+            "buildsystem": "cmake-ninja",
+            "config-opts": ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"],
+            "sources": [
+                { "type": "dir", "path": ".", "skip": ["build", ".flatpak-builder", "flatpak-build", "repo"] }
+            ]
+        }
+    ]
+}
