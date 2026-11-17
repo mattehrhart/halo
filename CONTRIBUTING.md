@@ -1,7 +1,7 @@
 # Contributing
 
 Bug reports and device reports are the most useful thing you can send. Most screens have only been
-tested against made-up devices, so real-hardware feedback matters.
+checked with simulated devices, so reports from real hardware help a lot.
 
 ## Reporting a problem with a device
 
