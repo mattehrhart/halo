@@ -82,6 +82,7 @@ install(TARGETS halo ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 install(FILES packaging/io.github.mattehrhart.Halo.desktop DESTINATION ${KDE_INSTALL_APPDIR})
 install(FILES packaging/io.github.mattehrhart.Halo.metainfo.xml DESTINATION ${KDE_INSTALL_METAINFODIR})
 install(FILES packaging/io.github.mattehrhart.Halo.svg DESTINATION ${KDE_INSTALL_FULL_ICONDIR}/hicolor/scalable/apps)
+install(FILES packaging/io.github.mattehrhart.Halo-symbolic.svg DESTINATION ${KDE_INSTALL_FULL_ICONDIR}/hicolor/symbolic/apps)
 
 # Tests: `ctest --test-dir build --output-on-failure`. Both run without a
 # display; the smoke test opens every screen against tests/fakehub.

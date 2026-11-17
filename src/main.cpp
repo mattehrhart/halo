@@ -474,7 +474,8 @@ public:
         if (!trayAvailable()) {
             return;
         }
-        m_tray.setIcon(QIcon::fromTheme(APP_ID, QApplication::windowIcon()));
+        // A one-color icon that the panel tints to match its other tray icons.
+        m_tray.setIcon(QIcon::fromTheme(APP_ID + QStringLiteral("-symbolic"), QIcon::fromTheme(APP_ID, QApplication::windowIcon())));
         m_tray.setToolTip(QStringLiteral("Halo"));
 
         auto *open = m_menu.addAction(QIcon::fromTheme(QStringLiteral("window")), QStringLiteral("Open Halo"));
